@@ -2,6 +2,7 @@ import API
 import sys
 import numpy as np
 import math 
+from collections import deque
 
 
 def log(string):
@@ -53,31 +54,57 @@ def updateDistanceGraphic(distanceMatrix):
             API.setColor(row,col,'O')
 
 
-def updateDistanceValue(currentCord,distanceMatrix,wallMatrix):
+def checkDistanceValue(currentCord,distanceMatrix,wallMatrix):
     rotationMap = np.array([[0,1],[1,0],[0,-1],[-1,0]])
-    stack = []
+    stack = deque()
     x = currentCord[0]
     y = currentCord[1]
     currentDistance = distanceMatrix[x][y]
     currentCell = (wallMatrix[x][y], currentDistance)
-    stack.push(currentCell)
-    while(not stack.empty()):
+    stack.append(currentCell)
+    while(len( stack )):
+        neighbors = []
         cell = stack.pop()
         cellWalls = list(cell[0])
         #Get all open neighboring cells
         for i in range(4):
-            if(cellWalls[i] == 0):
-                neighborX = x+rotationMap[0]
-                neighborY = y+rotationMap[1]
+            if(cellWalls[i] == '0' and i != 2):
+                neighborX = x+rotationMap[i][0]
+                neighborY = y+rotationMap[i][1]
                 #Save cell as wallString,Distance tuple
                 neighborCell = ( wallMatrix[neighborX][neighborY], 
                         distanceMatrix[neighborX][neighborY] )
                 neighbors.append(neighborCell)
-        minimumDistance = min(neighbors, lambda n: n[1])
+        minimumDistance = min(neighbors)[1]
         if(currentDistance != 1 + minimumDistance):
             distanceMatrix[x][y] = 1 + minimumDistance
+            API.setText(x,y, 1 + minimumDistance)
             for neighbor in neighbors:
-                stack.push(neighbor)
+                stack.append(neighbor)
+
+def getNextDirection(currentCords,wallMatrix,distanceMatrix):
+    rotationMap = np.array([[0,1],[1,0],[0,-1],[-1,0]])
+    neighbors = []
+    x = currentCords[0]
+    y = currentCords[1]
+    currentCell = (wallMatrix[x][y], distanceMatrix[x][y])
+    cellWalls = list(currentCell[0])
+    for i in range(4):
+        if(cellWalls[i] == '0'):
+            neighborX = x+rotationMap[i][0]
+            neighborY = y+rotationMap[i][1]
+            neighborCell = ( np.array([neighborX,neighborY]),
+                             distanceMatrix[neighborX][neighborY] )
+            neighbors.append(neighborCell)
+    neighbors.sort(key=lambda x:x[1])
+    nextNeighborCords = neighbors[0]
+    return nextNeighborCords[0] - currentCords
+
+def turnToDirection(currentDirection, toDirection):
+    while( not np.array_equal(currentDirection ,toDirection) ):
+        API.turnRight()
+        currentDirection = dirFunc(currentDirection,'R')
+    return currentDirection
 
 def main():
     distanceMatrix = np.array([
@@ -98,8 +125,8 @@ def main():
         [13, 12, 11, 10, 9,  8, 7, 6, 6, 7, 8, 9,  10, 11, 12, 13],
         [14, 13, 12, 11, 10, 9, 8, 7, 7, 8, 9, 10, 11, 12, 13, 14]
         ])
-    wallMatrix = np.chararray((16,16))
-    wallMatrix[:] = 'xxxx' #NorthEastWestSouth bits clock-wise
+    wallMatrix = np.full((16,16), "xxxx")
+    #wallMatrix[:] = 'xxxx' #NorthEastWestSouth bits clock-wise
     direction = np.array([0,1])
     currentCord = np.array([0,0])
     goalCords = np.array([[6,6],[6,7],[7,6],[7,7]])
@@ -111,15 +138,7 @@ def main():
     API.setColor(7, 7, "G")
     API.setColor(8, 7, "G")
     API.setColor(7, 8, "G")
-
     while not arreq_in_list(currentCord,goalCords):
-        if not API.wallRight():
-            API.turnRight()
-            direction = dirFunc(direction,'R')
-        while API.wallFront():
-            API.turnLeft()
-            direction = dirFunc(direction,'L')
-        API.moveForward()
         wallMatrix[currentCord[0]][currentCord[1]] = updateWallString(
                 API.wallFront(),
                 API.wallRight(),
@@ -127,12 +146,17 @@ def main():
                 API.wallLeft(),
                 direction
                 )
+        checkDistanceValue(currentCord, distanceMatrix, wallMatrix)
+        updateDistanceGraphic(distanceMatrix)
+        nextDir = getNextDirection(currentCord,wallMatrix,distanceMatrix)
+        direction = turnToDirection(direction,nextDir)
+        API.moveForward()
         #Utilities
         currentCord = currentCord + direction;
-        distanceMatrix[currentCord[0]][currentCord[1]] = counter
+#        distanceMatrix[currentCord[0]][currentCord[1]] = counter
         API.setText(currentCord[0], currentCord[1], counter)
         API.setColor(currentCord[0], currentCord[1], 'C')
-        counter = counter + 1
+#        counter = counter + 1
         log(currentCord)
 
 
