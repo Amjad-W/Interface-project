@@ -83,7 +83,6 @@ def checkDistanceValue(currentCord,distanceMatrix,wallMatrix):
                 neighbors.append(neighborCell)
         #Find minimum distance of neighbors
         if(neighbors):
-            log(neighbors)
             minimumDistance = min(neighbors, key=lambda n: n[3])
             minimumDistance = minimumDistance[ 3 ]
             if(currentDistance != 1 + minimumDistance):
@@ -92,25 +91,41 @@ def checkDistanceValue(currentCord,distanceMatrix,wallMatrix):
                 for neighbor in neighbors:
                     if(neighbor[3] != minimumDistance):
                         stack.append(neighbor)
-    return neighbors
 
-def getNextDirection(currentCords,wallMatrix,distanceMatrix):
-    rotationMap = np.array([[0,1],[1,0],[0,-1],[-1,0]])
+    #Finally return open neighbors
+    cellWalls = initialCell[0]
+    x = currentCord[0]
+    y = currentCord[1]
     neighbors = []
-    x = currentCords[0]
-    y = currentCords[1]
-    currentCell = (wallMatrix[x][y], distanceMatrix[x][y])
-    cellWalls = list(currentCell[0])
     for i in range(4):
         if(cellWalls[i] == '0'):
             neighborX = x+rotationMap[i][0]
             neighborY = y+rotationMap[i][1]
-            neighborCell = ( np.array([neighborX,neighborY]),
-                             distanceMatrix[neighborX][neighborY] )
+            #Save cell as wallString,Distance tuple
+            neighborCell = ( wallMatrix[neighborX][neighborY],
+                    neighborX, neighborY,
+                    distanceMatrix[neighborX][neighborY] )
             neighbors.append(neighborCell)
-    neighbors.sort(key=lambda x:x[1])
-    nextNeighborCords = neighbors[0]
-    return nextNeighborCords[0] - currentCords
+    return neighbors
+
+def getNextDirection(currentCords,possibleNextDirs):
+    rotationMap = np.array([[0,1],[1,0],[0,-1],[-1,0]])
+    neighbors = possibleNextDirs
+    nextNeighborCords = (99,99)
+    x = currentCords[0]
+    y = currentCords[1]
+    possibleNextDirs.sort(key=lambda x:x[3])
+    log(possibleNextDirs)
+    for nextDir in possibleNextDirs:
+        if(nextDir[0] == 'xxxx'):
+            nextNeighborCords = (nextDir[1],nextDir[2])
+            break
+    if(nextNeighborCords == (99,99)):
+        nextNeighborCords = (possibleNextDirs[0][1],possibleNextDirs[0][2])
+    log(currentCords)
+    log(nextNeighborCords)
+    log(nextNeighborCords - currentCords)
+    return nextNeighborCords - currentCords
 
 def turnToDirection(currentDirection, toDirection):
     while( not np.array_equal(currentDirection ,toDirection) ):
@@ -161,7 +176,7 @@ def main():
                 )
         possibleNextDirs = checkDistanceValue(currentCord, distanceMatrix, wallMatrix)
         updateDistanceGraphic(distanceMatrix)
-        nextDir = getNextDirection(currentCord,wallMatrix,distanceMatrix)
+        nextDir = getNextDirection(currentCord,possibleNextDirs)
         direction = turnToDirection(direction,nextDir)
         API.moveForward()
         #Utilities
