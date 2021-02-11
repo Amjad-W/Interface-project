@@ -2,8 +2,10 @@ import API
 import sys
 import numpy as np
 import math 
-from collections import deque
+from collections import deque,Counter
+from time import sleep
 
+SIZE = 8
 
 def log(string):
     sys.stderr.write("{}\n".format(string))
@@ -49,14 +51,19 @@ def leftShift(text,n):
 def rightShift(text,n):
     return text[-n:] + text[:-n]
 
-def updateDistanceGraphic(distanceMatrix):
-    for row in range(16):
-        for col in range(16):
+def setDistanceColor(distanceMatrix):
+    for row in range(SIZE):
+        for col in range(SIZE):
             API.setText(row,col,distanceMatrix[row][col])
             API.setColor(row,col,'O')
 
+def updateDistanceGraphic(distanceMatrix):
+    for row in range(SIZE):
+        for col in range(SIZE):
+            API.setText(row,col,distanceMatrix[row][col])
 
-def checkDistanceValue(currentCord,distanceMatrix,wallMatrix):
+
+def checkDistanceValue(currentCord,distanceMatrix,wallMatrix, done):
     rotationMap = np.array([[0,1],[1,0],[0,-1],[-1,0]])
     stack = deque()
     x = currentCord[0]
@@ -64,35 +71,44 @@ def checkDistanceValue(currentCord,distanceMatrix,wallMatrix):
     initialCellDistance = distanceMatrix[x][y]
     initialCell = (wallMatrix[x][y], x,y, initialCellDistance)
     stack.append(initialCell)
-    while(len( stack )):
-        neighbors = []
-        cell = stack.pop()
-        cellWalls = list(cell[0])
-        currentDistance = cell[3]
-        x = cell[1]
-        y = cell[2]
-        #Get all open neighboring cells
-        for i in range(4):
-            if(cellWalls[i] == '0'):
-                neighborX = x+rotationMap[i][0]
-                neighborY = y+rotationMap[i][1]
-                #Save cell as wallString,Distance tuple
-                neighborCell = ( wallMatrix[neighborX][neighborY],
-                        neighborX, neighborY,
-                        distanceMatrix[neighborX][neighborY] )
-                neighbors.append(neighborCell)
-        #Find minimum distance of neighbors
-        if(neighbors):
-            minimumDistance = min(neighbors, key=lambda n: n[3])
-            minimumDistance = minimumDistance[ 3 ]
-            if(currentDistance != 1 + minimumDistance):
-                distanceMatrix[x][y] = 1 + minimumDistance
-                API.setText(x,y, 1 + minimumDistance)
-                for neighbor in neighbors:
-                    if(neighbor[3] != minimumDistance):
+    if not done:
+        while(len( stack )):
+            neighbors = []
+            cell = stack.pop()
+            cellWalls = list(cell[0])
+            currentDistance = cell[3]
+            neighborDistances = []
+            x = cell[1]
+            y = cell[2]
+            #Get all open neighboring cells
+            for i in range(4):
+                if(cellWalls[i] == '0'):
+                    neighborX = x+rotationMap[i][0]
+                    neighborY = y+rotationMap[i][1]
+                    #Save cell as wallString,Distance tuple
+                    neighborCell = ( wallMatrix[neighborX][neighborY],
+                            neighborX, neighborY,
+                            distanceMatrix[neighborX][neighborY] )
+                    neighbors.append(neighborCell)
+            #Validate surrounding neighbors using minimum distance
+            if(neighbors):
+                if( ((x,y) == (initialCell[1],initialCell[2])) ):
+                    filteredNeighbors = neighbors 
+                else:
+                    filteredNeighbors = [n for n in neighbors if 'xxxx' not in n]
+                minimumDistance = min(filteredNeighbors, key=lambda n: n[3])
+                minimumDistance = minimumDistance[ 3 ]
+                if(currentDistance != 1 + minimumDistance):
+                    #log(filteredNeighbors)
+                    #log(f"Min: {minimumDistance}, Cur: {currentDistance}")
+                    distanceMatrix[x][y] = 1 + minimumDistance
+                    for neighbor in neighbors:
+                        #log(f"Added {neighbor}")
                         stack.append(neighbor)
+                if(x==0 and y==0):
+                    break;
 
-    #Finally return open neighbors
+    #Finally return open neighbors as possible next cell destination
     cellWalls = initialCell[0]
     x = currentCord[0]
     y = currentCord[1]
@@ -108,23 +124,25 @@ def checkDistanceValue(currentCord,distanceMatrix,wallMatrix):
             neighbors.append(neighborCell)
     return neighbors
 
-def getNextDirection(currentCords,possibleNextDirs):
+def getNextDirection(currentCords,possibleNextDirs,distanceMatrix,done):
     rotationMap = np.array([[0,1],[1,0],[0,-1],[-1,0]])
     neighbors = possibleNextDirs
     nextNeighborCords = (99,99)
     x = currentCords[0]
     y = currentCords[1]
-    possibleNextDirs.sort(key=lambda x:x[3])
-    log(possibleNextDirs)
+    if(done):
+        possibleNextDirs = [n for n in neighbors if 'xxxx' not in n]
+        possibleNextDirs = [n for n in possibleNextDirs if n[3] >= distanceMatrix[x][y]]
+        possibleNextDirs.sort(key=lambda x:x[3])
+        log(f"Possible: {possibleNextDirs}")
+    else:
+        possibleNextDirs.sort(key=lambda x:x[3])
     for nextDir in possibleNextDirs:
-        if(nextDir[0] == 'xxxx'):
+        if(nextDir[0] == 'xxxx' or done):
             nextNeighborCords = (nextDir[1],nextDir[2])
             break
     if(nextNeighborCords == (99,99)):
         nextNeighborCords = (possibleNextDirs[0][1],possibleNextDirs[0][2])
-    log(currentCords)
-    log(nextNeighborCords)
-    log(nextNeighborCords - currentCords)
     return nextNeighborCords - currentCords
 
 def turnToDirection(currentDirection, toDirection):
@@ -134,37 +152,55 @@ def turnToDirection(currentDirection, toDirection):
     return currentDirection
 
 def main():
-    distanceMatrix = np.array([
-        [14, 13, 12, 11, 10, 9, 8, 7, 7, 8, 9, 10, 11, 12, 13, 14],
-        [13, 12, 11, 10, 9,  8, 7, 6, 6, 7, 8, 9,  10, 11, 12, 13],
-        [12, 11, 10, 9,  8,  7, 6, 5, 5, 6, 7, 8,  9,  10, 11, 12],
-        [11, 10, 9,  8,  7,  6, 5, 4, 4, 5, 6, 7,  8,  9,  10, 11],
-        [10, 9,  8,  7,  6,  5, 4, 3, 3, 4, 5, 6,  7,  8,  9,  10],
-        [9,  8,  7,  6,  5,  4, 3, 2, 2, 3, 4, 5,  6,  7,  8,  9],
-        [8,  7,  6,  5,  4,  3, 2, 1, 1, 2, 3, 4,  5,  6,  7,  8],
-        [7,  6,  5,  4,  3,  2, 1, 0, 0, 1, 2, 3,  4,  5,  6,  7],
-        [7,  6,  5,  4,  3,  2, 1, 0, 0, 1, 2, 3,  4,  5,  6,  7],
-        [8,  7,  6,  5,  4,  3, 2, 1, 1, 2, 3, 4,  5,  6,  7,  8],
-        [9,  8,  7,  6,  5,  4, 3, 2, 2, 3, 4, 5,  6,  7,  8,  9],
-        [10, 9,  8,  7,  6,  5, 4, 3, 3, 4, 5, 6,  7,  8,  9,  10],
-        [11, 10, 9,  8,  7,  6, 5, 4, 4, 5, 6, 7,  8,  9,  10, 11],
-        [12, 11, 10, 9,  8,  7, 6, 5, 5, 6, 7, 8,  9,  10, 11, 12],
-        [13, 12, 11, 10, 9,  8, 7, 6, 6, 7, 8, 9,  10, 11, 12, 13],
-        [14, 13, 12, 11, 10, 9, 8, 7, 7, 8, 9, 10, 11, 12, 13, 14]
-        ])
-    wallMatrix = np.full((16,16), "xxxx")
+    if(SIZE == 16):
+        distanceMatrix = np.array([
+            [14, 13, 12, 11, 10, 9, 8, 7, 7, 8, 9, 10, 11, 12, 13, 14],
+            [13, 12, 11, 10, 9,  8, 7, 6, 6, 7, 8, 9,  10, 11, 12, 13],
+            [12, 11, 10, 9,  8,  7, 6, 5, 5, 6, 7, 8,  9,  10, 11, 12],
+            [11, 10, 9,  8,  7,  6, 5, 4, 4, 5, 6, 7,  8,  9,  10, 11],
+            [10, 9,  8,  7,  6,  5, 4, 3, 3, 4, 5, 6,  7,  8,  9,  10],
+            [9,  8,  7,  6,  5,  4, 3, 2, 2, 3, 4, 5,  6,  7,  8,  9],
+            [8,  7,  6,  5,  4,  3, 2, 1, 1, 2, 3, 4,  5,  6,  7,  8],
+            [7,  6,  5,  4,  3,  2, 1, 0, 0, 1, 2, 3,  4,  5,  6,  7],
+            [7,  6,  5,  4,  3,  2, 1, 0, 0, 1, 2, 3,  4,  5,  6,  7],
+            [8,  7,  6,  5,  4,  3, 2, 1, 1, 2, 3, 4,  5,  6,  7,  8],
+            [9,  8,  7,  6,  5,  4, 3, 2, 2, 3, 4, 5,  6,  7,  8,  9],
+            [10, 9,  8,  7,  6,  5, 4, 3, 3, 4, 5, 6,  7,  8,  9,  10],
+            [11, 10, 9,  8,  7,  6, 5, 4, 4, 5, 6, 7,  8,  9,  10, 11],
+            [12, 11, 10, 9,  8,  7, 6, 5, 5, 6, 7, 8,  9,  10, 11, 12],
+            [13, 12, 11, 10, 9,  8, 7, 6, 6, 7, 8, 9,  10, 11, 12, 13],
+            [14, 13, 12, 11, 10, 9, 8, 7, 7, 8, 9, 10, 11, 12, 13, 14]
+            ])
+    else:
+        distanceMatrix = np.array([
+            [6,  5, 4, 3, 3, 4, 5, 6],
+            [5,  4, 3, 2, 2, 3, 4, 5],
+            [4,  3, 2, 1, 1, 2, 3, 4],
+            [3,  2, 1, 0, 0, 1, 2, 3],
+            [3,  2, 1, 0, 0, 1, 2, 3],
+            [4,  3, 2, 1, 1, 2, 3, 4],
+            [5,  4, 3, 2, 2, 3, 4, 5],
+            [6,  5, 4, 3, 3, 4, 5, 6]
+            ]);
+    wallMatrix = np.full((SIZE,SIZE), "xxxx")
     #wallMatrix[:] = 'xxxx' #NorthEastWestSouth bits clock-wise
     direction = np.array([0,1])
-    currentCord = np.array([0,0])
-    goalCords = np.array([[7,7],[7,8],[8,7],[8,8]])
+    startingCord = np.array([0,0])
+    currentCord = startingCord
+    size2 = SIZE/2
+    goalCords = np.array([
+        [size2-1, size2-1],
+        [size2-1, size2],
+        [size2,   size2-1],
+        [size2,   size2]
+        ])
     counter = 1;
     log("Running...")
-    updateDistanceGraphic(distanceMatrix)
+    setDistanceColor(distanceMatrix)
     API.setColor(0, 0, "R")
-    API.setColor(8, 8, "G")
-    API.setColor(7, 7, "G")
-    API.setColor(8, 7, "G")
-    API.setColor(7, 8, "G")
+    for cord in goalCords:
+        API.setColor(int(cord[0]),int(cord[1]), 'G')
+    done = False
     while not arreq_in_list(currentCord,goalCords):
         log("Current cord: "+str(currentCord))
         wallMatrix[currentCord[0]][currentCord[1]] = updateWallString(
@@ -174,20 +210,32 @@ def main():
                 API.wallLeft(),
                 direction
                 )
-        possibleNextDirs = checkDistanceValue(currentCord, distanceMatrix, wallMatrix)
+        possibleNextDirs = checkDistanceValue(currentCord, distanceMatrix, wallMatrix,done)
         updateDistanceGraphic(distanceMatrix)
-        nextDir = getNextDirection(currentCord,possibleNextDirs)
+        nextDir = getNextDirection(currentCord, possibleNextDirs,distanceMatrix,done)
         direction = turnToDirection(direction,nextDir)
         API.moveForward()
         #Utilities
         currentCord = currentCord + direction;
-#        distanceMatrix[currentCord[0]][currentCord[1]] = counter
         API.setText(currentCord[0], currentCord[1], counter)
-        API.setColor(currentCord[0], currentCord[1], 'C')
-#        counter = counter + 1
+        API.setColor(currentCord[0], currentCord[1], 'R')
         log("")
-
-
+    done = True
+    log("Found shortest path!")
+    while not np.array_equal(currentCord, startingCord):
+        wallMatrix[currentCord[0]][currentCord[1]] = updateWallString(
+                API.wallFront(),
+                API.wallRight(),
+                False,
+                API.wallLeft(),
+                direction
+                )
+        log(f"Current cord {currentCord}")
+        possibleNextDirs = checkDistanceValue(currentCord, distanceMatrix, wallMatrix,done)
+        nextDir = getNextDirection(currentCord, possibleNextDirs,distanceMatrix,done)
+        direction = turnToDirection(direction,nextDir)
+        currentCord = currentCord + direction;
+        API.moveForward()
+    
 if __name__ == "__main__":
     main()
-
